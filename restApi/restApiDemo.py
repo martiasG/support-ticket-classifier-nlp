@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import pandas as pd
 import nltk as nk
 import seaborn as sns
@@ -11,28 +11,65 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.metrics import classification_report
-from nltk.stem import SnowballStemmer
-#Add this imports
-from io import StringIO
-import base64
+from sklearn.grid_search import GridSearchCV
 
 app = Flask(__name__)
+global dataFrame
+global grid_test
+global y_test
+global grid_predictions
+
+def removePunctuation(sentence):
+    r = [char for char in sentence if char not in string.punctuation]
+    return ''.join(r)
+
+def removeStopWords(sentence):
+    return [word for word in sentence.split() if word.lower() not in stopwords.words('spanish')]
+
+def cleanText(s):
+    return removeStopWords(removePunctuation(s))
 
 @app.route('/dataframe/all', methods=['GET'])
 def get_dataframe():
-    df = pd.read_excel('../ticketsSupportxls')
-    img = StringIO()
-    y = [1,2,3,4,5]
-    x = [0,2,1,3,4]
+    return dataframe.to_html()
 
-    df.hist(column='label', by='Estado', figsize=(14, 8), bins=50)
-    plt.plot(x,y)
-    plt.savefig(img, format='png')
-    img.seek(0)
+@app.route('/model/params', methods=['GET'])
+def get_bestparams():
+    return jsonify(grid_test.best_params_)
 
-    plot_url = base64.b64encode(img.getvalue())
+@app.route('/model/report', methods=['GET'])
+def get_report():
+    print(classification_report(grid_predictions, y_test))
 
-    return render_template('template_graph.html', plot_url=plot_url)
+    return classification_report(grid_predictions, y_test)
+
+@app.route('/model/predict', methods=['POST'])
+def predict():
+    if not request.json:
+        abort(400)
+
+    print(request.get_json()['message'])
+
+    return 'CLASS: '+grid_test.predict([request.get_json()['message']]).tolist()[0]+'\r\n'
 
 if __name__ == '__main__':
+    dataframe = pd.read_excel('../tickets.xlsx')
+    X_train, X_test, y_train, y_test = train_test_split(dataframe['descripcion'], dataframe['label'], test_size=0.35, random_state=42)
+
+    predict_pipeline = Pipeline([
+    ('BOW', CountVectorizer(analyzer=cleanText)),
+    ('Tifid', TfidfTransformer()),
+    ('Clasifier', MultinomialNB())
+                            ])
+
+    params = {'Tifid__use_idf':(True, False),
+         'Clasifier__alpha': (1e-2, 1e-10),
+         'BOW__ngram_range': [(1, 1), (1, 2)]}
+
+    grid_test = GridSearchCV(predict_pipeline, params, verbose=3, n_jobs=-1)
+
+    grid_test.fit(X_train, y_train)
+
+    grid_predictions = grid_test.predict(X_test)
+
     app.run(debug=True)
