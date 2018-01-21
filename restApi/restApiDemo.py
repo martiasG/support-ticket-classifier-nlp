@@ -1,8 +1,6 @@
 from flask import Flask, jsonify, request
 import pandas as pd
 import nltk as nk
-import seaborn as sns
-import matplotlib.pyplot as plt
 import string
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import CountVectorizer
